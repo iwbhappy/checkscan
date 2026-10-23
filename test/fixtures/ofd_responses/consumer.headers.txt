@@ -1,0 +1,18 @@
+HTTP/1.1 307 Temporary Redirect
+Server: nginx
+Date: Wed, 07 Oct 2026 13:02:31 GMT
+Transfer-Encoding: chunked
+Connection: keep-alive
+location: /ru?i=1462733895&f=010102236118&s=2002.00&t=20261007T153259
+
+HTTP/1.1 200 OK
+Server: nginx
+Date: Wed, 07 Oct 2026 13:02:31 GMT
+Content-Type: text/html; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+link: <http://consumer.oofd.kz/ru>; rel="alternate"; hreflang="ru", <http://consumer.oofd.kz/kk>; rel="alternate"; hreflang="kk", <http://consumer.oofd.kz/>; rel="alternate"; hreflang="x-default"
+link: </_next/static/media/b4a06a523f527a0e-s.p.d5a12ae5.woff2>; rel=preload; as="font"; crossorigin=""; type="font/woff2"
+Vary: rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding
+Cache-Control: private, no-cache, no-store, max-age=0, must-revalidate
+

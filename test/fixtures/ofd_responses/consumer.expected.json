@@ -1,0 +1,6 @@
+{
+  "classification": "consumer_form",
+  "containsReceipt": false,
+  "apiPath": "/api/consumer-proxy/api/tickets/get-by-url",
+  "note": "Real HTTP 200 Next.js page; form and hydration state, no receipt items. The API is called automatically on mount when all QR parameters are supplied."
+}

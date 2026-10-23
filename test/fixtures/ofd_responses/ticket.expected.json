@@ -1,0 +1,68 @@
+{
+  "ofdName": "АО Казахтелеком",
+  "sellerName": "ПАВЛОДАРСКИЙ ФИЛИАЛ ТОВАРИЩЕСТВА С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ \"СКИФ ТРЕЙД\"",
+  "sellerBin": "131141020408",
+  "storeAddress": "обл. Павлодарская, г. Павлодар, ул. Ак. Сатпаева 47, офис А",
+  "kkmRegNumber": "010102236118",
+  "kkmSerial": "502220466",
+  "fiscalSign": "1462733895",
+  "receiptNumber": "308128",
+  "dateTime": "2026-10-07T15:32:59+05:00",
+  "dateTimeUtc": "2026-10-07T10:32:59Z",
+  "tzOffsetMin": 300,
+  "timeZoneAssumed": true,
+  "totalMinor": 200200,
+  "discountMinor": 0,
+  "vatMinor": 27614,
+  "vatRate": 16.0,
+  "paymentType": "card",
+  "currency": "KZT",
+  "sourceUrl": "http://consumer.oofd.kz?i=1462733895&f=010102236118&s=2002.00&t=20261007T153259",
+  "needsReview": false,
+  "items": [
+    {
+      "name": "Бат.snickers 50,5",
+      "rawName": "Mars шоколадты батончигі 50,5гр snickers - Бат.snickers 50,5 - MARS",
+      "barcode": null,
+      "ntin": "0200092089208",
+      "quantity": 1.0,
+      "unit": "шт",
+      "unitPriceMinor": 29900,
+      "sumMinor": 29900,
+      "discountMinor": null
+    },
+    {
+      "name": "Молоко галиц.1л 2,5%",
+      "rawName": "Галицкое сүті 1 л 2,5% финпак - Молоко галиц.1л 2,5% - ПАВЛОДАР МОЛОКО",
+      "barcode": null,
+      "ntin": "0200021763506",
+      "quantity": 1.0,
+      "unit": "шт",
+      "unitPriceMinor": 43500,
+      "sumMinor": 43500,
+      "discountMinor": null
+    },
+    {
+      "name": "Творог 9% полуж 250г",
+      "rawName": "Сүзбе - Творог 9% полуж 250г - МОЛКОМ ПАВЛОДАР",
+      "barcode": null,
+      "ntin": "0200134355469",
+      "quantity": 1.0,
+      "unit": "шт",
+      "unitPriceMinor": 48900,
+      "sumMinor": 48900,
+      "discountMinor": null
+    },
+    {
+      "name": "Сметана 400гр 15%",
+      "rawName": "President қаймағы 400гр 15% пс - Сметана 400гр 15% - PRESIDENT",
+      "barcode": null,
+      "ntin": "0200020937090",
+      "quantity": 1.0,
+      "unit": "шт",
+      "unitPriceMinor": 77900,
+      "sumMinor": 77900,
+      "discountMinor": null
+    }
+  ]
+}

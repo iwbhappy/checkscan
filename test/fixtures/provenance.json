@@ -1,0 +1,196 @@
+{
+  "researchDate": "2026-10-07",
+  "rawQrFromSpecification": "http://consumer.oofd.kz?i=1462733895&amp;f=010102236118&amp;s=2002.00&amp;t=20261007T153259",
+  "decodedQrFromPhoto": "http://consumer.oofd.kz?i=1462733895&f=010102236118&s=2002.00&t=20261007T153259",
+  "requestHeaders": {
+    "User-Agent": "Mozilla/5.0",
+    "Accept-Language": "ru"
+  },
+  "responses": [
+    {
+      "file": "ofd_responses/consumer.html",
+      "bytes": 35233,
+      "sha256": "f24ffcc1b35981059b4d5508fd6ac5ea0289cb319c41df41a8c693ff1355dfb3",
+      "method": "GET",
+      "requestUrl": "https://consumer.oofd.kz?i=1462733895&f=010102236118&s=2002.00&t=20261007T153259",
+      "finalUrl": "https://consumer.oofd.kz/ru?i=1462733895&f=010102236118&s=2002.00&t=20261007T153259",
+      "statusChain": [
+        307,
+        200
+      ],
+      "serverDate": "Wed, 07 Oct 2026 13:02:31 GMT",
+      "headersFile": "ofd_responses/consumer.headers.txt"
+    },
+    {
+      "file": "ofd_responses/ticket.json",
+      "bytes": 6505,
+      "sha256": "cad1467f74f9773ae569071a437763cb8b0e94431a171824a18658c37c18b4a6",
+      "method": "GET",
+      "requestUrl": "https://consumer.oofd.kz/api/consumer-proxy/api/tickets/get-by-url?f=010102236118&i=1462733895&s=2002.00&t=20261007T153259",
+      "finalUrl": "https://consumer.oofd.kz/api/consumer-proxy/api/tickets/get-by-url?f=010102236118&i=1462733895&s=2002.00&t=20261007T153259",
+      "statusChain": [
+        200
+      ],
+      "serverDate": "Wed, 07 Oct 2026 13:03:43 GMT",
+      "headersFile": "ofd_responses/ticket.headers.txt",
+      "additionalRequestHeaders": {
+        "Content-Type": "application/json"
+      },
+      "cookiesOrAuthorizationSent": false
+    }
+  ],
+  "publicJavaScript": [
+    {
+      "file": "ofd_assets/04c7748a13e077a5.js",
+      "bytes": 21859,
+      "sha256": "b1dcb9a32214df7b0f133bd444d855339a44674a68502a8f7e1a7bf905c2ab4c",
+      "requestUrl": "https://consumer.oofd.kz/_next/static/chunks/04c7748a13e077a5.js",
+      "method": "GET",
+      "statusCaptured": false,
+      "discoveredIn": "ofd_responses/consumer.html"
+    },
+    {
+      "file": "ofd_assets/04f2c5b51eb6302c.js",
+      "bytes": 188710,
+      "sha256": "d5ab39f9a51c4403d9f4fb76caf8615505e519b6f50b4169436644d5b159ac55",
+      "requestUrl": "https://consumer.oofd.kz/_next/static/chunks/04f2c5b51eb6302c.js",
+      "method": "GET",
+      "statusCaptured": false,
+      "discoveredIn": "ofd_responses/consumer.html"
+    },
+    {
+      "file": "ofd_assets/06af767624b63a80.js",
+      "bytes": 16822,
+      "sha256": "7c155eb27cc70d76bcbf65a160e705108ab9ab777907f47588415f3d431a1ddd",
+      "requestUrl": "https://consumer.oofd.kz/_next/static/chunks/06af767624b63a80.js",
+      "method": "GET",
+      "statusCaptured": false,
+      "discoveredIn": "ofd_responses/consumer.html"
+    },
+    {
+      "file": "ofd_assets/2da4cb18c93421b2.js",
+      "bytes": 774637,
+      "sha256": "f8818ac399ce103cb8a53691f8c9dabc3f1f34dab4b038b3591d0c41ac4b9c9c",
+      "requestUrl": "https://consumer.oofd.kz/_next/static/chunks/2da4cb18c93421b2.js",
+      "method": "GET",
+      "statusCaptured": false,
+      "discoveredIn": "ofd_responses/consumer.html"
+    },
+    {
+      "file": "ofd_assets/456f4fcc64524be2.js",
+      "bytes": 38026,
+      "sha256": "d8c30affe9a033756305c5f16955950ac5c514c5cf656f6c7cb70010dfd7e233",
+      "requestUrl": "https://consumer.oofd.kz/_next/static/chunks/456f4fcc64524be2.js",
+      "method": "GET",
+      "statusCaptured": false,
+      "discoveredIn": "ofd_responses/consumer.html"
+    },
+    {
+      "file": "ofd_assets/820e52187fc72343.js",
+      "bytes": 170237,
+      "sha256": "4762d16fe5bf885e101046d8d9ed400d295d32a6e30718c496f9ef8211770870",
+      "requestUrl": "https://consumer.oofd.kz/_next/static/chunks/820e52187fc72343.js",
+      "method": "GET",
+      "statusCaptured": false,
+      "discoveredIn": "ofd_responses/consumer.html"
+    },
+    {
+      "file": "ofd_assets/86b3d8d07617a917.js",
+      "bytes": 14105,
+      "sha256": "d2daae98f6e42d93bea24d3098572dc18498694c3a04e0a3f09807ed026ebd0a",
+      "requestUrl": "https://consumer.oofd.kz/_next/static/chunks/86b3d8d07617a917.js",
+      "method": "GET",
+      "statusCaptured": false,
+      "discoveredIn": "ofd_responses/consumer.html"
+    },
+    {
+      "file": "ofd_assets/919af25e7c3faada.js",
+      "bytes": 64590,
+      "sha256": "b249d78297a8d5709033dac5d79c8d7b860ae2b0a92eb7f7368ff32ef91b0659",
+      "requestUrl": "https://consumer.oofd.kz/_next/static/chunks/919af25e7c3faada.js",
+      "method": "GET",
+      "statusCaptured": false,
+      "discoveredIn": "ofd_responses/consumer.html"
+    },
+    {
+      "file": "ofd_assets/97fbbbfea147e2e2.js",
+      "bytes": 282,
+      "sha256": "2d61614ae2876b135d755290ec2adf7f74bbb79f046ecfef462c7454e74f3e47",
+      "requestUrl": "https://consumer.oofd.kz/_next/static/chunks/97fbbbfea147e2e2.js",
+      "method": "GET",
+      "statusCaptured": false,
+      "discoveredIn": "ofd_responses/consumer.html"
+    },
+    {
+      "file": "ofd_assets/a6dad97d9634a72d.js",
+      "bytes": 112594,
+      "sha256": "0973c1d64c88adc8e3c950410cb58b288f72118d5965b78049438deb8f2f9683",
+      "requestUrl": "https://consumer.oofd.kz/_next/static/chunks/a6dad97d9634a72d.js",
+      "method": "GET",
+      "statusCaptured": false,
+      "discoveredIn": "ofd_responses/consumer.html"
+    },
+    {
+      "file": "ofd_assets/acde13be22e95624.js",
+      "bytes": 32444,
+      "sha256": "d2a7e04a7e2bf0a46cb32474de457b2e455e327194da5769360c0d8c848c8f6b",
+      "requestUrl": "https://consumer.oofd.kz/_next/static/chunks/acde13be22e95624.js",
+      "method": "GET",
+      "statusCaptured": false,
+      "discoveredIn": "ofd_responses/consumer.html"
+    },
+    {
+      "file": "ofd_assets/c978d71edb6fd2dd.js",
+      "bytes": 290,
+      "sha256": "9075a4a5c25ba2718070bf642951e08516aeb55c7f9ed387cda0f1a74d757d25",
+      "requestUrl": "https://consumer.oofd.kz/_next/static/chunks/c978d71edb6fd2dd.js",
+      "method": "GET",
+      "statusCaptured": false,
+      "discoveredIn": "ofd_responses/consumer.html"
+    },
+    {
+      "file": "ofd_assets/fd8eb07e4fefb05f.js",
+      "bytes": 46194,
+      "sha256": "5cd5be206aeb6268af79116229ff8c7f1c47b4fd1337ba7d3a62ddf2dc9c740d",
+      "requestUrl": "https://consumer.oofd.kz/_next/static/chunks/fd8eb07e4fefb05f.js",
+      "method": "GET",
+      "statusCaptured": false,
+      "discoveredIn": "ofd_responses/consumer.html"
+    },
+    {
+      "file": "ofd_assets/turbopack-08e94ab73b01abc9.js",
+      "bytes": 9896,
+      "sha256": "b07b075da576c9ee492d9bdc15c34e5c893d09c4b2b5888ac279a1a6bea7a837",
+      "requestUrl": "https://consumer.oofd.kz/_next/static/chunks/turbopack-08e94ab73b01abc9.js",
+      "method": "GET",
+      "statusCaptured": false,
+      "discoveredIn": "ofd_responses/consumer.html"
+    }
+  ],
+  "photo": {
+    "file": "photos/small_2026_10_07.jpg",
+    "bytes": 595753,
+    "sha256": "80c59b8bbecdab38475d24940ef3a738c0539b6cbd0ca53f72875deedb77f11d",
+    "source": "../../Чек.jpg (relative to this manifest; workspace-root original)",
+    "copiedWithoutModification": true,
+    "dimensions": [
+      1920,
+      2560
+    ],
+    "decoder": "OpenCV QRCodeDetector.detectAndDecode",
+    "successfulCropXYXY": [
+      740,
+      1950,
+      1150,
+      2340
+    ],
+    "successfulScale": 3,
+    "decodedQr": "http://consumer.oofd.kz?i=1462733895&f=010102236118&s=2002.00&t=20261007T153259"
+  },
+  "expectedFiles": "Manually derived normalized expectations; not downloaded response bodies.",
+  "limitations": [
+    "One receipt only; the two QR strings are encoded and decoded representations of the same receipt.",
+    "transactionDate carries no timezone; +05:00 is the specification default, not a timezone proven by the response.",
+    "Receipt JSON differs from printed VAT, discount and time; raw response is preserved."
+  ]
+}
