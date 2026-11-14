@@ -69,6 +69,21 @@ void main() {
   });
 
   test(
+    'PNG without QR exhausts preprocessing without a decoder error',
+    () async {
+      final png = File('${directory.path}/receipt.png');
+    await png.writeAsBytes(img.encodePng(img.Image(width: 100, height: 140)));
+      await expectLater(
+        PhotoQrService(
+          analyze: (_) async => null,
+          temporaryDirectory: () async => directory,
+        ).read(png.path),
+        throwsA(isA<QrNotFoundFailure>()),
+      );
+    },
+  );
+
+  test(
     'falls back after an advertising QR, stops early and deletes variants',
     () async {
       final attempted = <String>[];

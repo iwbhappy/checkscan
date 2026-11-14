@@ -1,4 +1,7 @@
 import 'package:flutter/foundation.dart';
+import 'dart:async';
+import 'dart:ui' show Size;
+import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/db/app_database.dart';
@@ -14,6 +17,31 @@ final databaseProvider = Provider<AppDatabase>((ref) {
   ref.onDispose(database.close);
   return database;
 });
+
+/// Camera preview and document analysis share the same native scanner owner.
+final scannerControllerProvider = Provider<MobileScannerController>((ref) {
+  final controller = MobileScannerController(
+    autoStart: false,
+    formats: [BarcodeFormat.qrCode],
+    cameraResolution: const Size(1280, 720),
+    autoZoom: true,
+  );
+  ref.onDispose(() {
+    unawaited(controller.dispose().catchError((Object _) {}));
+  });
+  return controller;
+});
+
+final importActivityProvider = NotifierProvider<ImportActivity, int>(
+  ImportActivity.new,
+);
+
+class ImportActivity extends Notifier<int> {
+  @override
+  int build() => 0;
+  void begin() => state++;
+  void end() => state = (state - 1).clamp(0, 100);
+}
 
 final ofdRegistryProvider = Provider<OfdProviderRegistry>((ref) {
   return OfdProviderRegistry([

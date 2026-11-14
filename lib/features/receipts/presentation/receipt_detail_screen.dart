@@ -12,7 +12,8 @@ import '../../../app/l10n.dart';
 import '../../../app/providers.dart';
 import '../../../app/widgets.dart';
 import '../../../data/db/app_database.dart';
-import '../../../data/repositories/receipt_repository.dart';
+import '../../../core/utils/merchant_name.dart';
+import '../../../app/motion.dart';
 import '../../../domain/models/qr_receipt.dart';
 import 'receipt_editor.dart';
 import 'receipt_providers.dart';
@@ -135,19 +136,10 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
     try {
       await ref
           .read(receiptRepositoryProvider)
-          .saveEdits(
+          .changeItemCategory(
             detail.receipt.id,
-            storeName: detail.store?.name ?? context.l10n.unknownStore,
-            dateTimeUtc: detail.receipt.dateTimeUtc,
-            tzOffsetMin: detail.receipt.tzOffsetMin,
-            note: detail.receipt.note,
-            categoryId: detail.receipt.categoryId,
-            items: [
-              for (var i = 0; i < detail.items.length; i++)
-                i == index
-                    ? itemWithCategory(detail.items[i], chosen)
-                    : ReceiptItemEdit.fromRow(detail.items[i]),
-            ],
+            detail.items[index].id,
+            chosen,
           );
       if (mounted &&
           await offerRememberCategory(context, detail.items[index].name)) {
@@ -201,21 +193,44 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
               padding: const EdgeInsets.all(20),
               children: [
                 Text(
-                  detail.store?.name ?? l.unknownStore,
+                  merchantDisplayName(detail.store?.name ?? l.unknownStore),
                   style: Theme.of(context).textTheme.headlineSmall,
                 ),
-                if (detail.store?.address != null) ...[
-                  const SizedBox(height: 8),
-                  Text(detail.store!.address!),
-                ],
                 const SizedBox(height: 8),
                 Text(displayDate(receiptLocalDate(receipt))),
                 const SizedBox(height: 20),
-                Text(l.total, style: Theme.of(context).textTheme.labelLarge),
-                Text(
-                  receiptMoney(ref, receipt.totalMinor),
-                  key: const ValueKey('receipt-total'),
-                  style: Theme.of(context).textTheme.headlineLarge,
+                MotionReveal(
+                  child: Card(
+                    color: Theme.of(context).colorScheme.primaryContainer,
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            receipt.isReturn ? 'Возврат покупки' : l.total,
+                            style: Theme.of(context).textTheme.labelLarge,
+                          ),
+                          const SizedBox(height: 6),
+                          Hero(
+                            tag: 'receipt-total-${receipt.id}',
+                            child: Material(
+                              color: Colors.transparent,
+                              child: Text(
+                                receiptMoney(ref, receipt.totalMinor),
+                                key: const ValueKey('receipt-total'),
+                                style: Theme.of(
+                                  context,
+                                ).textTheme.headlineLarge,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(l.itemsCount(detail.items.length)),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 12),
                 if (receipt.status != 'ok')
@@ -253,7 +268,12 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
                       child: Text(l.sumMismatch),
                     ),
                   ),
-                if (receipt.isManual)
+                if (receipt.isImported)
+                  const Chip(
+                    avatar: Icon(Icons.document_scanner_outlined, size: 18),
+                    label: Text('Из документа · проверено вами'),
+                  )
+                else if (receipt.isManual)
                   Chip(label: Text(l.addedManually))
                 else if (receipt.edited)
                   Chip(label: Text(l.edited)),
@@ -309,6 +329,16 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
                     tilePadding: EdgeInsets.zero,
                     title: Text(l.ofd),
                     children: [
+                      if (detail.store != null)
+                        _ReceiptField(
+                          label: 'Юридическое название',
+                          value: detail.store!.name,
+                        ),
+                      if (detail.store?.address != null)
+                        _ReceiptField(
+                          label: 'Адрес',
+                          value: detail.store!.address!,
+                        ),
                       if (receipt.ofdName != null)
                         _ReceiptField(label: l.ofd, value: receipt.ofdName!),
                       if (detail.store?.bin != null)
@@ -410,13 +440,23 @@ class _ItemCard extends ConsumerWidget {
           children: [
             Text(item.name, style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
-            Text(
-              '${NumberFormat('0.######', 'ru_RU').format(item.quantity)} '
-              '${item.unit ?? ''} × ${receiptMoney(ref, item.unitPriceMinor)}',
-            ),
-            Text(
-              receiptMoney(ref, item.sumMinor),
-              style: Theme.of(context).textTheme.titleLarge,
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              spacing: 16,
+              runSpacing: 8,
+              children: [
+                Text(
+                  '${NumberFormat('0.######', 'ru_RU').format(item.quantity)} '
+                  '${item.unit ?? ''} × ${receiptMoney(ref, item.unitPriceMinor)}',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                Text(
+                  receiptMoney(ref, item.sumMinor),
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ],
             ),
             const SizedBox(height: 8),
             ActionChip(

@@ -44,7 +44,7 @@ class BackupRepository {
     final rules = await db.select(db.categoryRules).get();
     return const JsonEncoder.withIndent('  ').convert({
       'format': 'checkscan',
-      'version': 1,
+      'version': receipts.any((row) => row.isReturn) ? 2 : 1,
       'exportedAt': DateTime.now().toUtc().toIso8601String(),
       'stores': stores.map((row) => row.toJson()).toList(),
       'categories': categories.map((row) => row.toJson()).toList(),
@@ -337,7 +337,9 @@ class _ValidatedBackup {
         throw const InvalidBackupException();
       }
       if (decoded['version'] is! int) throw const InvalidBackupException();
-      if (decoded['version'] != 1) throw const UnsupportedBackupException();
+      if (decoded['version'] != 1 && decoded['version'] != 2) {
+        throw const UnsupportedBackupException();
+      }
       final storeJson = _rows(decoded, 'stores');
       final categoryJson = _rows(decoded, 'categories');
       final receiptJson = _rows(decoded, 'receipts');
@@ -387,7 +389,15 @@ class _ValidatedBackup {
             !['pending', 'ok', 'error'].contains(row['status'])) {
           throw const InvalidBackupException();
         }
-        _integer(row, 'totalMinor', min: 0);
+        final isReturn = (row['dedupKey'] as String).startsWith(
+          '${AppDatabase.manualDedupPrefix}return:',
+        );
+        _integer(
+          row,
+          'totalMinor',
+          min: isReturn ? -9223372036854775807 : 0,
+          max: isReturn ? 0 : 9223372036854775807,
+        );
         _integer(row, 'discountMinor', min: 0, nullable: true);
         _integer(row, 'vatMinor', min: 0, nullable: true);
         _integer(row, 'tzOffsetMin', min: -840, max: 840, nullable: true);
@@ -418,6 +428,14 @@ class _ValidatedBackup {
         row['sourceUrl'] = qr.sourceUrl;
       }
       final receiptIds = receiptJson.map((row) => row['id'] as int).toSet();
+      final returnIds = receiptJson
+          .where(
+            (row) => (row['dedupKey'] as String).startsWith(
+              '${AppDatabase.manualDedupPrefix}return:',
+            ),
+          )
+          .map((row) => row['id'])
+          .toSet();
       final positions = <String>{};
       for (final row in itemJson) {
         _foreign(row, 'receiptId', receiptIds, required: true);
@@ -433,7 +451,12 @@ class _ValidatedBackup {
         }
         _number(row, 'quantity', min: 0.000000001, max: 1000000000);
         _integer(row, 'unitPriceMinor', min: 0);
-        _integer(row, 'sumMinor', min: 0);
+        _integer(
+          row,
+          'sumMinor',
+          min: returnIds.contains(row['receiptId']) ? -9223372036854775807 : 0,
+          max: returnIds.contains(row['receiptId']) ? 0 : 9223372036854775807,
+        );
         _integer(row, 'discountMinor', min: 0, nullable: true);
       }
       final ruleKeys = <String>{};

@@ -234,7 +234,7 @@ void main() {
       await seed();
       final raw = await exporter.exportJson();
       final decoded = jsonDecode(raw) as Map<String, dynamic>;
-      decoded['version'] = 2;
+      decoded['version'] = 999;
       await expectLater(
         importer.importJson(jsonEncode(decoded)),
         throwsA(isA<UnsupportedBackupException>()),

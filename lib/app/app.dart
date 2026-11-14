@@ -14,6 +14,11 @@ import '../features/settings/presentation/settings_screen.dart';
 import 'l10n.dart';
 import 'preferences.dart';
 import 'providers.dart';
+import 'theme.dart';
+import 'motion.dart';
+import '../domain/models/receipt_draft.dart';
+import '../features/scan/presentation/document_import_screen.dart';
+import '../features/scan/data/shared_receipt_bridge.dart';
 export 'preferences.dart' show themeModeProvider;
 
 final backgroundWorkProvider = Provider<bool>((ref) => true);
@@ -26,7 +31,11 @@ GoRouter createRouter({String initialLocation = '/scan'}) => GoRouter(
       builder: (context, state, child) =>
           _AppShell(location: state.uri.path, child: child),
       routes: [
-        GoRoute(path: '/scan', builder: (_, _) => const ScanScreen()),
+        GoRoute(
+          path: '/scan',
+          builder: (_, state) =>
+              ScanScreen(initialLink: state.uri.queryParameters['link']),
+        ),
         GoRoute(
           path: '/history',
           builder: (_, state) => HistoryScreen(
@@ -42,7 +51,17 @@ GoRouter createRouter({String initialLocation = '/scan'}) => GoRouter(
         GoRoute(path: '/settings', builder: (_, _) => const SettingsScreen()),
       ],
     ),
-    GoRoute(path: '/receipts/new', builder: (_, _) => const ReceiptEditor()),
+    GoRoute(
+      path: '/receipts/new',
+      builder: (_, state) => ReceiptEditor(
+        draft: state.extra is ReceiptDraft ? state.extra as ReceiptDraft : null,
+      ),
+    ),
+    GoRoute(
+      path: '/import',
+      builder: (_, state) =>
+          DocumentImportScreen(path: state.extra as String? ?? ''),
+    ),
     GoRoute(
       path: '/receipts/:id',
       builder: (_, state) => ReceiptDetailScreen(
@@ -69,11 +88,26 @@ class CheckScanApp extends ConsumerStatefulWidget {
 
 class _CheckScanAppState extends ConsumerState<CheckScanApp>
     with WidgetsBindingObserver {
+  SharedReceiptBridge? _incoming;
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     if (ref.read(backgroundWorkProvider)) {
+      _incoming = SharedReceiptBridge((receipt) {
+        if (!mounted) return;
+        final router = ref.read(routerProvider);
+        if (receipt['path'] case final String path) {
+          router.push('/import', extra: path);
+        } else if (receipt['text'] case final String text) {
+          router.go(
+            Uri(path: '/scan', queryParameters: {'link': text}).toString(),
+          );
+        }
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_incoming!.start());
+      });
       ref.read(receiptRepositoryProvider).start();
       unawaited(
         ref
@@ -97,6 +131,7 @@ class _CheckScanAppState extends ConsumerState<CheckScanApp>
 
   @override
   void dispose() {
+    _incoming?.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -108,22 +143,10 @@ class _CheckScanAppState extends ConsumerState<CheckScanApp>
     locale: const Locale('ru'),
     supportedLocales: AppLocalizations.supportedLocales,
     localizationsDelegates: AppLocalizations.localizationsDelegates,
-    theme: _theme(Brightness.light),
-    darkTheme: _theme(Brightness.dark),
+    theme: checkScanTheme(Brightness.light),
+    darkTheme: checkScanTheme(Brightness.dark),
     themeMode: ref.watch(themeModeProvider),
     routerConfig: ref.watch(routerProvider),
-  );
-
-  ThemeData _theme(Brightness brightness) => ThemeData(
-    useMaterial3: true,
-    colorScheme: ColorScheme.fromSeed(
-      seedColor: const Color(0xff008577),
-      brightness: brightness,
-    ),
-    inputDecorationTheme: const InputDecorationTheme(
-      border: OutlineInputBorder(),
-    ),
-    cardTheme: const CardThemeData(margin: EdgeInsets.symmetric(vertical: 6)),
   );
 }
 
@@ -134,73 +157,24 @@ class _AppShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l = context.l10n;
-    Widget button(String path, IconData icon, String label) => Expanded(
-      child: Tooltip(
-        message: label,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(12),
-          onTap: () => context.go(path),
-          child: Semantics(
-            selected: location == path,
-            button: true,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    icon,
-                    color: location == path
-                        ? Theme.of(context).colorScheme.primary
-                        : null,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
+    final destinations = [
+      ('/history', Icons.receipt_long_outlined, l.historyTab),
+      ('/scan', Icons.qr_code_scanner_rounded, 'Скан'),
+      ('/stats', Icons.bar_chart_rounded, l.statsTab),
+      ('/settings', Icons.settings_outlined, l.settingsTab),
+    ];
     return Scaffold(
       body: child,
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      floatingActionButton: FloatingActionButton(
-        tooltip: l.scanTitle,
-        onPressed: () => context.go('/scan'),
-        child: const Icon(Icons.qr_code_scanner, size: 32),
-      ),
-      bottomNavigationBar: BottomAppBar(
-        height:
-            88 + (MediaQuery.textScalerOf(context).scale(12) - 12).clamp(0, 24),
-        shape: const CircularNotchedRectangle(),
-        notchMargin: 8,
-        child: Row(
-          children: [
-            Expanded(
-              child: Row(
-                children: [
-                  button('/history', Icons.receipt_long_outlined, l.historyTab),
-                ],
-              ),
-            ),
-            const SizedBox(width: 76),
-            Expanded(
-              child: Row(
-                children: [
-                  button('/stats', Icons.bar_chart_outlined, l.statsTab),
-                  button('/settings', Icons.settings_outlined, l.settingsTab),
-                ],
-              ),
-            ),
-          ],
-        ),
+      bottomNavigationBar: NavigationBar(
+        animationDuration: motionDuration(context),
+        selectedIndex: destinations
+            .indexWhere((item) => item.$1 == location)
+            .clamp(0, 3),
+        onDestinationSelected: (index) => context.go(destinations[index].$1),
+        destinations: [
+          for (final item in destinations)
+            NavigationDestination(icon: Icon(item.$2), label: item.$3),
+        ],
       ),
     );
   }

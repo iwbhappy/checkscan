@@ -264,6 +264,41 @@ class ReceiptRepository {
     }
   }
 
+  /// A category correction must never rewrite financial or fiscal data.
+  Future<void> changeItemCategory(int receiptId, int itemId, int categoryId) =>
+      db.transaction(() async {
+        final receipt = await _read(receiptId);
+        if (receipt == null || receipt.status != 'ok') {
+          throw StateError('Сначала загрузите позиции чека');
+        }
+        final category = await (db.select(
+          db.categories,
+        )..where((row) => row.id.equals(categoryId))).getSingleOrNull();
+        if (category == null) throw StateError('Категория удалена');
+        final changed =
+            await (db.update(db.receiptItems)..where(
+                  (row) =>
+                      row.id.equals(itemId) & row.receiptId.equals(receiptId),
+                ))
+                .write(ReceiptItemsCompanion(categoryId: Value(categoryId)));
+        if (changed == 0) throw StateError('Позиция удалена');
+        final items = await (db.select(
+          db.receiptItems,
+        )..where((row) => row.receiptId.equals(receiptId))).get();
+        await (db.update(
+          db.receipts,
+        )..where((row) => row.id.equals(receiptId))).write(
+          ReceiptsCompanion(
+            categoryId: Value(
+              CategoryRepository.dominantCategory([
+                for (final item in items) (item.categoryId, item.sumMinor),
+              ]),
+            ),
+            updatedAt: Value(_now().toUtc()),
+          ),
+        );
+      });
+
   Future<void> saveEdits(
     int id, {
     required String storeName,
@@ -292,7 +327,26 @@ class ReceiptRepository {
             ),
           );
     }
-    final total = _itemsTotal(items);
+    final financialChanged =
+        previous.items.length != items.length ||
+        [
+          for (
+            var index = 0;
+            index < items.length && index < previous.items.length;
+            index++
+          )
+            previous.items[index].quantity != items[index].quantity ||
+                previous.items[index].unitPriceMinor !=
+                    items[index].unitPriceMinor ||
+                previous.items[index].sumMinor.abs() !=
+                    items[index].sumMinor.abs(),
+        ].any((changed) => changed);
+    final signedItems = previous.receipt.isReturn
+        ? [for (final item in items) item.withSum(-item.sumMinor.abs())]
+        : items;
+    final total = financialChanged
+        ? _itemsTotal(signedItems)
+        : previous.receipt.totalMinor;
     final changedTotal = total != previous.receipt.totalMinor;
     await db.saveReceipt(
       ReceiptsCompanion(
@@ -304,7 +358,9 @@ class ReceiptRepository {
         categoryId: Value(categoryId ?? previous.receipt.categoryId),
         note: Value(note?.trim().isEmpty == true ? null : note?.trim()),
         edited: const Value(true),
-        needsReview: const Value(false),
+        needsReview: Value(
+          financialChanged ? false : previous.receipt.needsReview,
+        ),
         status: const Value('ok'),
         nextRetryAt: const Value(null),
         lastError: const Value(null),
@@ -313,8 +369,8 @@ class ReceiptRepository {
         vatRate: changedTotal ? const Value(null) : const Value.absent(),
       ),
       [
-        for (var position = 0; position < items.length; position++)
-          items[position].toCompanion(id, position),
+        for (var position = 0; position < signedItems.length; position++)
+          signedItems[position].toCompanion(id, position),
       ],
     );
   });
@@ -328,10 +384,37 @@ class ReceiptRepository {
     String? note,
     int? categoryId,
     required List<ReceiptItemEdit> items,
+    int? confirmedTotalMinor,
+    String? importFingerprint,
+    bool isReturn = false,
   }) => db.transaction(() async {
     final seller = _validSeller(storeName, items);
-    if (items.isEmpty) {
+    if (items.isEmpty && confirmedTotalMinor == null) {
       throw const FormatException('Добавьте хотя бы одну позицию');
+    }
+    if (confirmedTotalMinor != null && confirmedTotalMinor < 0) {
+      throw const FormatException('Проверьте итоговую сумму');
+    }
+    if (importFingerprint != null &&
+        !RegExp(r'^[a-f0-9]{64}$').hasMatch(importFingerprint)) {
+      throw const FormatException('Некорректный источник');
+    }
+    final sourcePrefix =
+        '${AppDatabase.manualDedupPrefix}${isReturn ? 'return:' : ''}';
+    final signedItems = isReturn
+        ? [for (final item in items) item.withSum(-item.sumMinor.abs())]
+        : items;
+    final confirmedTotal = confirmedTotalMinor == null
+        ? null
+        : isReturn
+        ? -confirmedTotalMinor
+        : confirmedTotalMinor;
+    final importKey = importFingerprint == null
+        ? null
+        : '${sourcePrefix}import:$importFingerprint';
+    if (importKey != null) {
+      final existing = await db.findReceiptByDedupKey(importKey);
+      if (existing != null) return existing.id;
     }
     final existingStore =
         await (db.select(db.stores)
@@ -353,12 +436,18 @@ class ReceiptRepository {
         storeId: Value(storeId),
         dateTimeUtc: dateTimeUtc.toUtc(),
         tzOffsetMin: Value(tzOffsetMin),
-        totalMinor: _itemsTotal(items),
+        totalMinor: confirmedTotal ?? _itemsTotal(signedItems),
         sourceUrl: '',
         dedupKey:
-            '${AppDatabase.manualDedupPrefix}${now.microsecondsSinceEpoch}-'
-            '${Random().nextInt(1 << 32)}',
+            importKey ??
+            '$sourcePrefix${now.microsecondsSinceEpoch}-'
+                '${Random().nextInt(1 << 32)}',
         status: const Value('ok'),
+        needsReview: Value(
+          confirmedTotalMinor != null &&
+              items.isNotEmpty &&
+              _itemsTotal(signedItems) != confirmedTotal,
+        ),
         edited: const Value(true),
         note: Value(note?.trim().isEmpty == true ? null : note?.trim()),
         categoryId: Value(
@@ -371,8 +460,8 @@ class ReceiptRepository {
         updatedAt: Value(now),
       ),
       [
-        for (var position = 0; position < items.length; position++)
-          items[position].toCompanion(0, position),
+        for (var position = 0; position < signedItems.length; position++)
+          signedItems[position].toCompanion(0, position),
       ],
     );
   });
@@ -384,6 +473,8 @@ class ReceiptRepository {
     }
     for (final item in items) {
       if (item.name.trim().isEmpty ||
+          item.unitPriceMinor < 0 ||
+          item.sumMinor < 0 ||
           !item.quantity.isFinite ||
           item.quantity <= 0) {
         throw const FormatException('Проверьте название и количество позиции');
@@ -544,6 +635,19 @@ class ReceiptItemEdit {
   final String? unit;
   final int? discountMinor;
   final int? categoryId;
+
+  ReceiptItemEdit withSum(int sum) => ReceiptItemEdit(
+    name: name,
+    rawName: rawName,
+    quantity: quantity,
+    unitPriceMinor: unitPriceMinor,
+    sumMinor: sum,
+    barcode: barcode,
+    ntin: ntin,
+    unit: unit,
+    discountMinor: discountMinor,
+    categoryId: categoryId,
+  );
 
   ReceiptItemsCompanion toCompanion(int id, int position) =>
       ReceiptItemsCompanion.insert(

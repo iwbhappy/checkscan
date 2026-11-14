@@ -5,6 +5,7 @@ import 'package:checkscan/data/db/app_database.dart';
 import 'package:checkscan/data/ofd/ofd_provider.dart';
 import 'package:checkscan/data/ofd/ofd_provider_registry.dart';
 import 'package:checkscan/data/repositories/receipt_repository.dart';
+import 'package:checkscan/data/repositories/backup_repository.dart';
 import 'package:checkscan/domain/models/parsed_receipt.dart';
 import 'package:drift/drift.dart' hide isNull;
 import 'package:drift/native.dart';
@@ -269,6 +270,166 @@ void main() {
     expect(saved.edited, false);
     expect(saved.status, 'pending');
   });
+
+  test(
+    'editing only metadata preserves a discrepancy and original total',
+    () async {
+      final receipt = (await repository.scan(qr)).receipt;
+      await (db.update(
+        db.receipts,
+      )..where((row) => row.id.equals(receipt.id))).write(
+        const ReceiptsCompanion(
+          totalMinor: Value(190000),
+          needsReview: Value(true),
+        ),
+      );
+      final detail = (await db.getReceiptDetail(receipt.id))!;
+      await repository.saveEdits(
+        receipt.id,
+        storeName: detail.store!.name,
+        dateTimeUtc: detail.receipt.dateTimeUtc,
+        note: 'Заметка',
+        items: detail.items.map(ReceiptItemEdit.fromRow).toList(),
+      );
+      final saved = (await db.getReceiptDetail(receipt.id))!.receipt;
+      expect(saved.totalMinor, 190000);
+      expect(saved.needsReview, true);
+    },
+  );
+
+  test(
+    'manual return reduces expenses and survives backup round trip',
+    () async {
+      final id = await repository.createManual(
+        storeName: 'Возврат',
+        dateTimeUtc: now,
+        isReturn: true,
+        items: const [
+          ReceiptItemEdit(
+            name: 'Товар',
+            quantity: 1,
+            unitPriceMinor: 50000,
+            sumMinor: 50000,
+            categoryId: 1,
+          ),
+        ],
+      );
+      final detail = (await db.getReceiptDetail(id))!;
+      expect(detail.receipt.isReturn, true);
+      expect(detail.receipt.totalMinor, -50000);
+      expect(detail.items.single.sumMinor, -50000);
+      final copy = AppDatabase(NativeDatabase.memory());
+      try {
+        final backup = await BackupRepository(db).exportJson();
+        expect((await BackupRepository(copy).importJson(backup)).imported, 1);
+        expect(
+          (await copy.watchHistory().first).single.receipt.totalMinor,
+          -50000,
+        );
+        expect(
+          (await copy.expenseSummary(
+            now.subtract(const Duration(days: 1)),
+            now.add(const Duration(days: 1)),
+          )).totalMinor,
+          -50000,
+        );
+      } finally {
+        await copy.close();
+      }
+      await repository.saveEdits(
+        id,
+        storeName: 'Возврат',
+        dateTimeUtc: now,
+        items: const [
+          ReceiptItemEdit(
+            name: 'Товар',
+            quantity: 2,
+            unitPriceMinor: 50000,
+            sumMinor: 100000,
+          ),
+        ],
+      );
+      expect((await db.getReceiptDetail(id))!.receipt.totalMinor, -100000);
+    },
+  );
+
+  test(
+    'category correction preserves fiscal totals, taxes and review state',
+    () async {
+      final receipt = (await repository.scan(qr)).receipt;
+      await (db.update(
+        db.receipts,
+      )..where((row) => row.id.equals(receipt.id))).write(
+        const ReceiptsCompanion(
+          totalMinor: Value(190000),
+          discountMinor: Value(10200),
+          vatMinor: Value(26000),
+          needsReview: Value(true),
+        ),
+      );
+      final before = (await db.getReceiptDetail(receipt.id))!;
+      await repository.changeItemCategory(
+        receipt.id,
+        before.items.single.id,
+        5,
+      );
+      final after = (await db.getReceiptDetail(receipt.id))!;
+      expect(after.items.single.categoryId, 5);
+      expect(after.receipt.totalMinor, 190000);
+      expect(after.receipt.discountMinor, 10200);
+      expect(after.receipt.vatMinor, 26000);
+      expect(after.receipt.needsReview, true);
+      expect(after.receipt.edited, before.receipt.edited);
+      expect(after.receipt.dedupKey, before.receipt.dedupKey);
+      expect(after.receipt.sourceUrl, before.receipt.sourceUrl);
+    },
+  );
+
+  test(
+    'category correction cannot update an item from another receipt',
+    () async {
+      final first = (await repository.scan(qr)).receipt;
+      final second = (await repository.scan(
+        qr.replaceFirst('i=1462733895', 'i=1462733896'),
+      )).receipt;
+      final item = (await db.getReceiptDetail(second.id))!.items.single;
+      await expectLater(
+        repository.changeItemCategory(first.id, item.id, 5),
+        throwsStateError,
+      );
+      expect(
+        (await db.getReceiptDetail(second.id))!.items.single.categoryId,
+        item.categoryId,
+      );
+    },
+  );
+
+  test(
+    'document import preserves confirmed total and deduplicates the file',
+    () async {
+      final fingerprint = List.filled(64, 'a').join();
+      final first = await repository.createManual(
+        storeName: 'Документ',
+        dateTimeUtc: now,
+        items: const [],
+        confirmedTotalMinor: 150000,
+        importFingerprint: fingerprint,
+      );
+      final second = await repository.createManual(
+        storeName: 'Документ',
+        dateTimeUtc: now,
+        items: const [],
+        confirmedTotalMinor: 150000,
+        importFingerprint: fingerprint,
+      );
+      expect(first, second);
+      final detail = (await db.getReceiptDetail(first))!;
+      expect(detail.receipt.totalMinor, 150000);
+      expect(detail.receipt.isImported, true);
+      expect(detail.items, isEmpty);
+      expect(await db.select(db.receipts).get(), hasLength(1));
+    },
+  );
 
   test(
     'editing rejects integer overflow and rolls back every change',

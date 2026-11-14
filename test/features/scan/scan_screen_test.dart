@@ -109,6 +109,8 @@ void main() {
         200,
         scrollable: find.byType(Scrollable).first,
       );
+      await tester.ensureVisible(find.text('Вставить ссылку'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Вставить ссылку'));
       await tester.pumpAndSettle();
       await tester.ensureVisible(find.text('Вставить из буфера'));

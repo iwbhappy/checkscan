@@ -9,20 +9,22 @@ import 'package:image_picker/image_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:permission_handler/permission_handler.dart' as permissions;
 import 'package:url_launcher/url_launcher.dart';
+import 'package:file_picker/file_picker.dart';
 
 import '../../../app/l10n.dart';
 import '../../../app/failure_text.dart';
 import '../../../app/providers.dart';
 import '../../../core/errors/app_failure.dart';
 import '../../../domain/models/qr_receipt.dart';
-import '../data/photo_qr_service.dart';
 import '../data/qr_capture.dart';
 import '../data/qr_diagnostics.dart';
+import 'scan_reticle.dart';
 
-enum _ScanPhase { ready, photo, loading }
+enum _ScanPhase { ready, photo, loading, success }
 
 class ScanScreen extends ConsumerStatefulWidget {
-  const ScanScreen({super.key});
+  const ScanScreen({this.initialLink, super.key});
+  final String? initialLink;
 
   @override
   ConsumerState<ScanScreen> createState() => _ScanScreenState();
@@ -30,12 +32,9 @@ class ScanScreen extends ConsumerStatefulWidget {
 
 class _ScanScreenState extends ConsumerState<ScanScreen>
     with WidgetsBindingObserver {
-  final _controller = MobileScannerController(
-    autoStart: false,
-    formats: [BarcodeFormat.qrCode],
-    cameraResolution: const Size(1280, 720),
-    autoZoom: true,
-  );
+  GoRouter? _router;
+  bool _covered = false;
+  late final MobileScannerController _controller;
   final _picker = ImagePicker();
   bool _busy = false;
   bool _starting = false;
@@ -56,11 +55,16 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
   @override
   void initState() {
     super.initState();
+    _controller = ref.read(scannerControllerProvider);
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) => _initialize());
   }
 
   Future<void> _initialize() async {
+    if (widget.initialLink case final String link) {
+      await _session(() => _process(link));
+      return;
+    }
     if (defaultTargetPlatform == TargetPlatform.android && !kIsWeb) {
       try {
         final lost = await _picker.retrieveLostData();
@@ -91,6 +95,8 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
         !mounted ||
         _busy ||
         _starting ||
+        _covered ||
+        ref.read(importActivityProvider) > 0 ||
         _lifecycle != AppLifecycleState.resumed ||
         !(ModalRoute.of(context)?.isCurrent ?? true)) {
       return;
@@ -226,6 +232,14 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
       );
       if (open != true || !mounted) return;
     } else {
+      if (result.receipt.status == 'ok') {
+        setState(() => _phase = _ScanPhase.success);
+        unawaited(HapticFeedback.lightImpact());
+        if (!MediaQuery.disableAnimationsOf(context)) {
+          await Future<void>.delayed(const Duration(milliseconds: 280));
+        }
+        if (!mounted) return;
+      }
       final text = result.receipt.status == 'pending'
           ? context.l10n.savedOffline
           : result.receipt.status == 'error'
@@ -248,7 +262,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
         ),
       );
     }
-    if (mounted) await context.push('/receipts/${result.receipt.id}');
+    if (mounted) unawaited(context.push('/receipts/${result.receipt.id}'));
   }
 
   Future<void> _showUnsupported(String raw) async {
@@ -292,7 +306,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
       ),
     );
     if (action == 'manual' && mounted) {
-      await context.push('/receipts/new');
+      unawaited(context.push('/receipts/new'));
       return;
     }
     if (action == 'open' && uri != null) {
@@ -317,19 +331,16 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
   });
 
   Future<void> _readPhoto(String path) async {
-    setState(() => _phase = _ScanPhase.photo);
-    String? originalRaw;
-    final service = PhotoQrService(
-      analyze: (path) =>
-          _controller.analyzeImage(path, formats: [BarcodeFormat.qrCode]),
-      onRawQr: (raw) {
-        originalRaw = raw;
-        recordRawQr(raw);
-      },
-    );
-    final qr = await service.read(path);
-    if (mounted) await _process(originalRaw ?? qr.sourceUrl);
+    if (mounted) unawaited(context.push('/import', extra: path));
   }
+
+  Future<void> _document() => _session(() async {
+    final file = await FilePicker.pickFile(
+      type: FileType.custom,
+      allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png', 'webp', 'heic'],
+    );
+    if (file?.path != null && mounted) await _readPhoto(file!.path!);
+  });
 
   Future<void> _manual() => _session(() async {
     final value = await showDialog<String>(
@@ -352,14 +363,57 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final router = GoRouter.maybeOf(context);
+    if (router != _router) {
+      _router?.routerDelegate.removeListener(_routeChanged);
+      _router = router;
+      _router?.routerDelegate.addListener(_routeChanged);
+    }
+  }
+
+  void _routeChanged() {
+    final matches = _router?.routerDelegate.currentConfiguration;
+    if (matches == null || matches.isEmpty) return;
+    _covered = matches.last.matchedLocation != '/scan';
+    if (_covered) {
+      unawaited(_stopCamera());
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_resumeCamera());
+      });
+    }
+  }
+
+  @override
+  void didUpdateWidget(ScanScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.initialLink != null &&
+        widget.initialLink != oldWidget.initialLink) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_session(() => _process(widget.initialLink!)));
+      });
+    }
+  }
+
+  @override
   void dispose() {
+    _router?.routerDelegate.removeListener(_routeChanged);
     WidgetsBinding.instance.removeObserver(this);
-    unawaited(_controller.dispose().catchError((Object _) {}));
+    unawaited(_stopCamera());
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(importActivityProvider, (_, active) {
+      if (active > 0) {
+        unawaited(_stopCamera());
+      } else {
+        unawaited(_resumeCamera());
+      }
+    });
     final l10n = context.l10n;
     return Scaffold(
       appBar: AppBar(
@@ -394,9 +448,9 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                 ClipRRect(
                   borderRadius: BorderRadius.circular(24),
                   child: SizedBox(
-                    height: (MediaQuery.sizeOf(context).height * 0.36).clamp(
-                      220.0,
-                      330.0,
+                    height: (MediaQuery.sizeOf(context).height * 0.43).clamp(
+                      250.0,
+                      420.0,
                     ),
                     child: _mobile
                         ? Stack(
@@ -427,18 +481,10 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                                 overlayBuilder: (context, constraints) =>
                                     IgnorePointer(
                                       child: Center(
-                                        child: Container(
+                                        child: ScanReticle(
                                           width: constraints.maxWidth * 0.7,
-                                          height: 210,
-                                          decoration: BoxDecoration(
-                                            border: Border.all(
-                                              color: Colors.white,
-                                              width: 3,
-                                            ),
-                                            borderRadius: BorderRadius.circular(
-                                              20,
-                                            ),
-                                          ),
+                                          height: constraints.maxHeight * 0.64,
+                                          active: !_busy,
                                         ),
                                       ),
                                     ),
@@ -481,10 +527,36 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                                       child: Column(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
-                                          const LinearProgressIndicator(),
+                                          if (_phase == _ScanPhase.success)
+                                            TweenAnimationBuilder<double>(
+                                              tween: Tween(begin: 0.7, end: 1),
+                                              duration:
+                                                  MediaQuery.disableAnimationsOf(
+                                                    context,
+                                                  )
+                                                  ? Duration.zero
+                                                  : const Duration(
+                                                      milliseconds: 240,
+                                                    ),
+                                              curve: Curves.easeOutBack,
+                                              builder: (_, value, _) =>
+                                                  Transform.scale(
+                                                    scale: value,
+                                                    child: const Icon(
+                                                      Icons
+                                                          .check_circle_rounded,
+                                                      color: Color(0xff87f4d5),
+                                                      size: 64,
+                                                    ),
+                                                  ),
+                                            )
+                                          else
+                                            const LinearProgressIndicator(),
                                           const SizedBox(height: 16),
                                           Text(
-                                            _phase == _ScanPhase.photo
+                                            _phase == _ScanPhase.success
+                                                ? l10n.receiptSaved
+                                                : _phase == _ScanPhase.photo
                                                 ? l10n.analyzingPhoto
                                                 : _phase == _ScanPhase.loading
                                                 ? l10n.loadingReceipt
@@ -539,6 +611,11 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
                       onPressed: _busy ? null : _gallery,
                       icon: const Icon(Icons.photo_library_outlined),
                       label: Text(l10n.gallery),
+                    ),
+                    FilledButton.tonalIcon(
+                      onPressed: _busy ? null : _document,
+                      icon: const Icon(Icons.picture_as_pdf_outlined),
+                      label: const Text('Фото / PDF'),
                     ),
                     OutlinedButton.icon(
                       onPressed: _busy ? null : _manual,

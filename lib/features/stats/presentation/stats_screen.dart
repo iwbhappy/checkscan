@@ -9,6 +9,8 @@ import '../../../app/l10n.dart';
 import '../../../app/preferences.dart';
 import '../../../app/providers.dart';
 import '../../../app/widgets.dart';
+import '../../../app/motion.dart';
+import '../../../core/utils/merchant_name.dart';
 import '../../../core/utils/money.dart';
 import '../../../data/repositories/stats_repository.dart';
 
@@ -33,6 +35,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
   late DateTime _from;
   late DateTime _until;
   bool _frequency = false;
+  int? _selectedCategory;
 
   @override
   void initState() {
@@ -195,6 +198,14 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
                 final comparison = stats.previousTotalMinor == 0
                     ? l.noPreviousPeriodData
                     : '${stats.changePercent!.toStringAsFixed(1)} %';
+                final chartCategories = stats.categories
+                    .where((category) => category.totalMinor > 0)
+                    .toList();
+                final selectedCategory = chartCategories
+                    .where(
+                      (category) => category.categoryId == _selectedCategory,
+                    )
+                    .firstOrNull;
                 return ListView(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
                   children: [
@@ -207,8 +218,9 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
                           children: [
                             Text(l.totalSpent),
                             const SizedBox(height: 8),
-                            Text(
-                              money(stats.summary.totalMinor),
+                            AnimatedAmount(
+                              value: stats.summary.totalMinor,
+                              format: money,
                               style: Theme.of(context).textTheme.headlineLarge,
                             ),
                             const SizedBox(height: 16),
@@ -240,22 +252,61 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
                             '${l.byCategory}, ${money(stats.summary.totalMinor)}',
                         child: SizedBox(
                           height: 200,
-                          child: PieChart(
-                            PieChartData(
-                              centerSpaceRadius: 46,
-                              sectionsSpace: 3,
-                              sections: [
-                                for (final category in stats.categories.where(
-                                  (category) => category.totalMinor > 0,
-                                ))
-                                  PieChartSectionData(
-                                    value: category.totalMinor.toDouble(),
-                                    color: Color(category.color),
-                                    radius: 44,
-                                    showTitle: false,
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              PieChart(
+                                PieChartData(
+                                  centerSpaceRadius: 46,
+                                  sectionsSpace: 3,
+                                  pieTouchData: PieTouchData(
+                                    touchCallback: (event, response) {
+                                      final index =
+                                          response
+                                              ?.touchedSection
+                                              ?.touchedSectionIndex ??
+                                          -1;
+                                      final id =
+                                          event.isInterestedForInteractions &&
+                                              index >= 0 &&
+                                              index < chartCategories.length
+                                          ? chartCategories[index].categoryId
+                                          : null;
+                                      if (id != _selectedCategory) {
+                                        setState(() => _selectedCategory = id);
+                                      }
+                                    },
                                   ),
-                              ],
-                            ),
+                                  sections: [
+                                    for (final category in chartCategories)
+                                      PieChartSectionData(
+                                        value: category.totalMinor.toDouble(),
+                                        color: Color(category.color),
+                                        radius:
+                                            category.categoryId ==
+                                                _selectedCategory
+                                            ? 52
+                                            : 44,
+                                        showTitle: false,
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              IgnorePointer(
+                                child: SizedBox(
+                                  width: 84,
+                                  child: Text(
+                                    selectedCategory == null
+                                        ? '${chartCategories.length}\nкатегорий'
+                                        : '${(selectedCategory.totalMinor * 100 / stats.summary.totalMinor).toStringAsFixed(0)} %',
+                                    textAlign: TextAlign.center,
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.labelLarge,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
@@ -382,7 +433,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
                     _heading(context, l.topStores),
                     for (final store in stats.stores)
                       ListTile(
-                        title: Text(store.name),
+                        title: Text(merchantDisplayName(store.name)),
                         subtitle: Text(l.receiptsCount(store.receiptCount)),
                         trailing: Text(money(store.totalMinor)),
                         onTap: store.storeId == null

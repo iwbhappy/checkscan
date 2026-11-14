@@ -10,6 +10,8 @@ import '../../../app/providers.dart';
 import '../../../app/widgets.dart';
 import '../../../core/utils/money.dart';
 import '../../../data/db/app_database.dart';
+import '../../../core/utils/merchant_name.dart';
+import '../../../app/motion.dart';
 import 'receipt_providers.dart';
 
 class HistoryScreen extends ConsumerStatefulWidget {
@@ -174,6 +176,25 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                 ),
               ),
             ),
+            if (_hasFilter)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: [
+                    InputChip(
+                      label: const Text('Фильтры включены'),
+                      avatar: const Icon(Icons.tune, size: 16),
+                      onPressed: _filters,
+                      onDeleted: () {
+                        _search.clear();
+                        setState(() => _filter = const ReceiptFilter());
+                      },
+                    ),
+                  ],
+                ),
+              ),
             Expanded(
               child: history.when(
                 loading: () => const LoadingSkeleton(),
@@ -247,12 +268,17 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                                     // The database stream removes the card.
                                     return false;
                                   },
-                                  child: _ReceiptCard(
-                                    entry: entry,
-                                    onOpen: () => context.push(
-                                      '/receipts/${entry.receipt.id}',
+                                  child: MotionReveal(
+                                    key: ValueKey(
+                                      'entrance-${entry.receipt.id}',
                                     ),
-                                    onDelete: () => _delete(entry.receipt.id),
+                                    child: _ReceiptCard(
+                                      entry: entry,
+                                      onOpen: () => context.push(
+                                        '/receipts/${entry.receipt.id}',
+                                      ),
+                                      onDelete: () => _delete(entry.receipt.id),
+                                    ),
                                   ),
                                 ),
                               ],
@@ -301,6 +327,11 @@ class _ReceiptCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l = context.l10n;
     final receipt = entry.receipt;
+    final scheme = Theme.of(context).colorScheme;
+    final categories = ref.watch(receiptCategoriesProvider).asData?.value ?? [];
+    final category = categories
+        .where((row) => row.id == receipt.categoryId)
+        .firstOrNull;
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: InkWell(
@@ -314,10 +345,39 @@ class _ReceiptCard extends ConsumerWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: scheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Icon(
+                      categoryIcons[category?.icon] ??
+                          Icons.receipt_long_outlined,
+                      color: scheme.onPrimaryContainer,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
                   Expanded(
-                    child: Text(
-                      entry.storeName ?? l.unknownStore,
-                      style: Theme.of(context).textTheme.titleMedium,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          merchantDisplayName(
+                            entry.storeName ?? l.unknownStore,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 5),
+                        Text(
+                          '${DateFormat.Hm('ru_RU').format(receiptLocalDate(receipt))} · ${l.itemsCount(entry.itemCount)}',
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: scheme.onSurfaceVariant),
+                        ),
+                      ],
                     ),
                   ),
                   IconButton(
@@ -327,14 +387,19 @@ class _ReceiptCard extends ConsumerWidget {
                   ),
                 ],
               ),
-              Text(
-                receiptMoney(ref, receipt.totalMinor),
-                style: Theme.of(context).textTheme.headlineSmall,
-              ),
-              const SizedBox(height: 6),
-              Text(
-                '${DateFormat.Hm('ru_RU').format(receiptLocalDate(receipt))} · '
-                '${l.itemsCount(entry.itemCount)}',
+              const SizedBox(height: 10),
+              Align(
+                alignment: Alignment.centerRight,
+                child: Hero(
+                  tag: 'receipt-total-${receipt.id}',
+                  child: Material(
+                    color: Colors.transparent,
+                    child: Text(
+                      receiptMoney(ref, receipt.totalMinor),
+                      style: Theme.of(context).textTheme.headlineSmall,
+                    ),
+                  ),
+                ),
               ),
               if (receipt.status != 'ok' ||
                   receipt.needsReview ||
@@ -351,7 +416,13 @@ class _ReceiptCard extends ConsumerWidget {
                         ),
                       ),
                     if (receipt.needsReview) Chip(label: Text(l.needsReview)),
-                    if (receipt.edited) Chip(label: Text(l.edited)),
+                    if (receipt.isReturn) const Chip(label: Text('Возврат')),
+                    if (receipt.isImported)
+                      const Chip(label: Text('Из документа'))
+                    else if (receipt.isManual)
+                      Chip(label: Text(l.addedManually))
+                    else if (receipt.edited)
+                      Chip(label: Text(l.edited)),
                   ],
                 ),
             ],

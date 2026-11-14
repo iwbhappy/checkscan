@@ -23,6 +23,10 @@ enum PhotoVariant {
   bottomCenter,
   bottomLeft,
   bottomRight,
+  upperLeft,
+  upperRight,
+  middleCenter,
+  fullContrast,
 }
 
 class PhotoTransformRequest {
@@ -44,6 +48,8 @@ class PhotoQrService {
     Future<Directory> Function()? temporaryDirectory,
     Future<String?> Function(PhotoTransformRequest)? transform,
     this.onRawQr,
+    this.isCancelled,
+    this.timeBudget,
   }) : _temporaryDirectory = temporaryDirectory ?? getTemporaryDirectory,
        _transform =
            transform ?? ((request) => compute(createPhotoVariant, request));
@@ -52,9 +58,12 @@ class PhotoQrService {
   final Future<Directory> Function() _temporaryDirectory;
   final Future<String?> Function(PhotoTransformRequest) _transform;
   final void Function(String)? onRawQr;
+  final bool Function()? isCancelled;
+  final Duration? timeBudget;
   String? _unknownRaw;
 
   Future<QrReceipt> read(String path) async {
+    final elapsed = Stopwatch()..start();
     _unknownRaw = null;
     final source = File(path);
     if (!await source.exists() || await source.length() > 32 * 1024 * 1024) {
@@ -70,6 +79,8 @@ class PhotoQrService {
     );
     try {
       for (final variant in PhotoVariant.values) {
+        if (isCancelled?.call() ?? false) throw const QrNotFoundFailure();
+        if (timeBudget != null && elapsed.elapsed >= timeBudget!) break;
         final output =
             '${directory.path}${Platform.pathSeparator}${variant.name}.jpg';
         String? transformed;
@@ -159,23 +170,32 @@ String? createPhotoVariant(PhotoTransformRequest request) {
   final kind = request.variant;
   if (kind == PhotoVariant.bottomCenter ||
       kind == PhotoVariant.bottomLeft ||
-      kind == PhotoVariant.bottomRight) {
+      kind == PhotoVariant.bottomRight ||
+      kind == PhotoVariant.upperLeft ||
+      kind == PhotoVariant.upperRight ||
+      kind == PhotoVariant.middleCenter) {
     final width = math.max(1, (source.width * 0.5).round());
     final x = switch (kind) {
-      PhotoVariant.bottomLeft => 0,
-      PhotoVariant.bottomRight => source.width - width,
+      PhotoVariant.bottomLeft || PhotoVariant.upperLeft => 0,
+      PhotoVariant.bottomRight ||
+      PhotoVariant.upperRight => source.width - width,
       _ => (source.width - width) ~/ 2,
     };
-    final y = (source.height * 0.62).floor();
+    final y = switch (kind) {
+      PhotoVariant.upperLeft || PhotoVariant.upperRight => 0,
+      PhotoVariant.middleCenter => (source.height * 0.25).floor(),
+      _ => (source.height * 0.62).floor(),
+    };
     source = img.copyCrop(
       source,
       x: x,
       y: y,
       width: width,
-      height: source.height - y,
+      height: math.min(source.height - y, (source.height * 0.5).ceil()),
     );
   } else if (kind != PhotoVariant.fullDouble &&
-      kind != PhotoVariant.fullTriple) {
+      kind != PhotoVariant.fullTriple &&
+      kind != PhotoVariant.fullContrast) {
     final y = source.height * 2 ~/ 3;
     source = img.copyCrop(
       source,
@@ -210,6 +230,9 @@ String? createPhotoVariant(PhotoTransformRequest request) {
   }
   if (kind == PhotoVariant.lowerThreshold) {
     source = img.luminanceThreshold(source, threshold: 0.55);
+  }
+  if (kind == PhotoVariant.fullContrast) {
+    source = img.adjustColor(img.grayscale(source), contrast: 1.6);
   }
   File(request.outputPath).writeAsBytesSync(img.encodeJpg(source, quality: 96));
   return request.outputPath;

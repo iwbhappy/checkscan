@@ -257,11 +257,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.info_outline),
             title: Text(l.about),
-            subtitle: Text(l.version('1.0.0')),
+            subtitle: Text(l.version('1.1.0')),
             onTap: () => showAboutDialog(
               context: context,
               applicationName: 'CheckScan',
-              applicationVersion: '1.0.0',
+              applicationVersion: '1.1.0',
               applicationIcon: Icon(
                 Icons.receipt_long,
                 color: Theme.of(context).colorScheme.primary,

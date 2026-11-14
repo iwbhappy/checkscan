@@ -373,6 +373,11 @@ class AppDatabase extends _$AppDatabase {
 
 extension ManualReceipt on ReceiptRow {
   bool get isManual => dedupKey.startsWith(AppDatabase.manualDedupPrefix);
+  bool get isImported =>
+      dedupKey.startsWith('${AppDatabase.manualDedupPrefix}import:') ||
+      dedupKey.startsWith('${AppDatabase.manualDedupPrefix}return:import:');
+  bool get isReturn =>
+      dedupKey.startsWith('${AppDatabase.manualDedupPrefix}return:');
 }
 
 class ReceiptDetailData {

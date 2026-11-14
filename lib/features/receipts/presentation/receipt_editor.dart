@@ -12,6 +12,7 @@ import '../../../core/utils/money.dart';
 import '../../../data/db/app_database.dart';
 import '../../../data/repositories/category_repository.dart';
 import '../../../data/repositories/receipt_repository.dart';
+import '../../../domain/models/receipt_draft.dart';
 import 'receipt_providers.dart';
 
 Future<bool> offerRememberCategory(BuildContext context, String name) async {
@@ -88,8 +89,9 @@ ReceiptItemEdit itemWithCategory(ReceiptItemRow item, int category) =>
 
 class ReceiptEditor extends ConsumerStatefulWidget {
   /// Without [detail] the editor creates a new manually entered purchase.
-  const ReceiptEditor({this.detail, super.key});
+  const ReceiptEditor({this.detail, this.draft, super.key});
   final ReceiptDetailData? detail;
+  final ReceiptDraft? draft;
 
   @override
   ConsumerState<ReceiptEditor> createState() => _ReceiptEditorState();
@@ -99,24 +101,60 @@ class _ReceiptEditorState extends ConsumerState<ReceiptEditor> {
   final _form = GlobalKey<FormState>();
   late final TextEditingController _store;
   late final TextEditingController _note;
+  late final TextEditingController _confirmedTotal;
   late DateTime _date;
   late List<ReceiptItemEdit> _items;
   final _rememberItems = <ReceiptItemEdit>{};
   int? _category;
   bool _saving = false;
+  bool _return = false;
+  int? get _confirmedMinor {
+    try {
+      return Money.parseMinor(_confirmedTotal.text);
+    } on FormatException {
+      return null;
+    }
+  }
 
   @override
   void initState() {
     super.initState();
     final detail = widget.detail;
-    _store = TextEditingController(text: detail?.store?.name ?? '');
+    _return = detail?.receipt.isReturn ?? widget.draft?.possibleReturn ?? false;
+    _store = TextEditingController(
+      text: detail?.store?.name ?? widget.draft?.sellerName ?? '',
+    );
     _note = TextEditingController(text: detail?.receipt.note ?? '');
+    _confirmedTotal = TextEditingController(
+      text: widget.draft?.totalMinor == null
+          ? ''
+          : Money.decimal(widget.draft!.totalMinor!),
+    );
+    _confirmedTotal.addListener(() {
+      if (mounted) setState(() {});
+    });
     final now = kazakhstanNow();
     _date = detail == null
-        ? DateTime.utc(now.year, now.month, now.day, now.hour, now.minute)
+        ? widget.draft?.localDate ??
+              DateTime.utc(now.year, now.month, now.day, now.hour, now.minute)
         : receiptLocalDate(detail.receipt);
     _category = detail?.receipt.categoryId;
-    _items = detail?.items.map(ReceiptItemEdit.fromRow).toList() ?? [];
+    _items =
+        detail?.items
+            .map(
+              (row) => ReceiptItemEdit.fromRow(row).withSum(row.sumMinor.abs()),
+            )
+            .toList() ??
+        [
+          for (final item in widget.draft?.items ?? [])
+            ReceiptItemEdit(
+              name: item.name,
+              rawName: item.rawName,
+              quantity: item.quantity,
+              unitPriceMinor: item.unitPriceMinor,
+              sumMinor: item.sumMinor,
+            ),
+        ];
   }
 
   bool get _isNew => widget.detail == null;
@@ -125,6 +163,7 @@ class _ReceiptEditorState extends ConsumerState<ReceiptEditor> {
   void dispose() {
     _store.dispose();
     _note.dispose();
+    _confirmedTotal.dispose();
     super.dispose();
   }
 
@@ -187,7 +226,7 @@ class _ReceiptEditorState extends ConsumerState<ReceiptEditor> {
 
   Future<void> _save() async {
     if (!_form.currentState!.validate() || _saving) return;
-    if (_isNew && _items.isEmpty) {
+    if (_isNew && _items.isEmpty && widget.draft == null) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(context.l10n.addAtLeastOneItem)));
@@ -214,6 +253,11 @@ class _ReceiptEditorState extends ConsumerState<ReceiptEditor> {
           categoryId: _category,
           note: _note.text,
           items: _items,
+          confirmedTotalMinor: widget.draft == null
+              ? null
+              : Money.parseMinor(_confirmedTotal.text),
+          importFingerprint: widget.draft?.fingerprint,
+          isReturn: _return,
         );
       } else {
         await repository.saveEdits(
@@ -271,8 +315,54 @@ class _ReceiptEditorState extends ConsumerState<ReceiptEditor> {
         .where((row) => row.id == shownCategory)
         .firstOrNull;
     final total = _items.fold<int>(0, (sum, item) => sum + item.sumMinor);
+    final previous = widget.detail;
+    final unchangedAmounts =
+        previous != null &&
+        previous.items.length == _items.length &&
+        [
+          for (var i = 0; i < _items.length; i++)
+            previous.items[i].quantity == _items[i].quantity &&
+                previous.items[i].unitPriceMinor == _items[i].unitPriceMinor &&
+                previous.items[i].sumMinor.abs() == _items[i].sumMinor.abs(),
+        ].every((unchanged) => unchanged);
+    final savedTotal = widget.draft != null
+        ? _confirmedMinor ?? total
+        : unchangedAmounts
+        ? previous.receipt.totalMinor.abs()
+        : total;
     return Scaffold(
-      appBar: AppBar(title: Text(_isNew ? l.newPurchase : l.editReceipt)),
+      appBar: AppBar(
+        title: Text(
+          widget.draft != null
+              ? 'Проверка чека'
+              : _isNew
+              ? l.newPurchase
+              : l.editReceipt,
+        ),
+      ),
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                '${_return ? 'Возврат' : l.total}: ${receiptMoney(ref, _return ? -savedTotal : savedTotal)}',
+                key: const ValueKey('edited-total'),
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 12),
+              FilledButton.icon(
+                key: const ValueKey('save-receipt'),
+                onPressed: _saving ? null : _save,
+                icon: const Icon(Icons.check),
+                label: Text(_saving ? l.loading : l.save),
+              ),
+            ],
+          ),
+        ),
+      ),
       body: SafeArea(
         child: Form(
           key: _form,
@@ -280,14 +370,70 @@ class _ReceiptEditorState extends ConsumerState<ReceiptEditor> {
             padding: const EdgeInsets.all(16),
             children: [
               if (_isNew) ...[
-                Text(l.manualEntryHint),
+                Text(
+                  widget.draft == null
+                      ? l.manualEntryHint
+                      : 'Сверьте магазин, дату, сумму и товары с оригиналом.',
+                ),
+                const SizedBox(height: 16),
+              ],
+              if (_isNew)
+                SwitchListTile.adaptive(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Возврат покупки'),
+                  subtitle: _return
+                      ? const Text('Сумма уменьшит расходы')
+                      : null,
+                  value: _return,
+                  onChanged: _saving
+                      ? null
+                      : (value) => setState(() => _return = value),
+                ),
+              if (widget.draft != null) ...[
+                TextFormField(
+                  key: const ValueKey('recognized-total'),
+                  controller: _confirmedTotal,
+                  decoration: const InputDecoration(
+                    labelText: 'Итого на чеке, ₸',
+                    helperText:
+                        'Сохраняется эта сумма. Сумма позиций показана внизу.',
+                  ),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  validator: (value) {
+                    try {
+                      if (Money.parseMinor(value ?? '') >= 0) return null;
+                    } on FormatException {
+                      /* Keep missing data visible. */
+                    }
+                    return l.invalidAmount;
+                  },
+                ),
+                const SizedBox(height: 16),
+                if (widget.draft!.localDate == null)
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 12),
+                    child: Text(
+                      'Дата не распознана: ниже указано текущее время. Укажите дату покупки.',
+                    ),
+                  ),
+                ExpansionTile(
+                  title: const Text('Сверить с исходным текстом'),
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: SelectableText(widget.draft!.rawText),
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 16),
               ],
               TextFormField(
                 key: const ValueKey('receipt-store'),
                 controller: _store,
                 enabled: !_saving,
-                autofocus: _isNew,
+                autofocus: _isNew && widget.draft == null,
                 textCapitalization: TextCapitalization.sentences,
                 decoration: InputDecoration(labelText: l.storeName),
                 validator: (value) => value == null || value.trim().isEmpty
@@ -343,6 +489,21 @@ class _ReceiptEditorState extends ConsumerState<ReceiptEditor> {
               ),
               const SizedBox(height: 24),
               Text(l.items, style: Theme.of(context).textTheme.titleLarge),
+              if (widget.draft != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Сумма позиций: ${receiptMoney(ref, total)}. Проверьте количество и цену: для строк без количества предложена одна позиция.',
+                ),
+                if (_items.isNotEmpty &&
+                    _confirmedMinor != null &&
+                    _confirmedMinor != total)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 8),
+                    child: Text(
+                      'Сумма позиций отличается от итога. Чек будет отмечен для проверки.',
+                    ),
+                  ),
+              ],
               for (var index = 0; index < _items.length; index++)
                 Card(
                   child: Padding(
@@ -391,18 +552,6 @@ class _ReceiptEditorState extends ConsumerState<ReceiptEditor> {
                 label: Text(l.addItem),
               ),
               const SizedBox(height: 20),
-              Text(
-                '${l.total}: ${receiptMoney(ref, total)}',
-                key: const ValueKey('edited-total'),
-                style: Theme.of(context).textTheme.headlineSmall,
-              ),
-              const SizedBox(height: 20),
-              FilledButton.icon(
-                key: const ValueKey('save-receipt'),
-                onPressed: _saving ? null : _save,
-                icon: const Icon(Icons.check),
-                label: Text(_saving ? l.loading : l.save),
-              ),
             ],
           ),
         ),

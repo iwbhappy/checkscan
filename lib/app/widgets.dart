@@ -38,20 +38,64 @@ class EmptyState extends StatelessWidget {
   );
 }
 
-class LoadingSkeleton extends StatelessWidget {
+class LoadingSkeleton extends StatefulWidget {
   const LoadingSkeleton({super.key});
+  @override
+  State<LoadingSkeleton> createState() => _LoadingSkeletonState();
+}
+
+class _LoadingSkeletonState extends State<LoadingSkeleton>
+    with SingleTickerProviderStateMixin {
+  late final _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1400),
+  );
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!MediaQuery.disableAnimationsOf(context) &&
+        TickerMode.valuesOf(context).enabled) {
+      _controller.repeat();
+    } else {
+      _controller.stop();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) => Semantics(
     label: context.l10n.loading,
-    child: ListView.builder(
-      itemCount: 5,
-      padding: const EdgeInsets.all(16),
-      itemBuilder: (context, index) => Container(
-        height: 84,
-        margin: const EdgeInsets.only(bottom: 12),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(16),
+    child: ExcludeSemantics(
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, _) => ShaderMask(
+          blendMode: BlendMode.srcATop,
+          shaderCallback: (bounds) => LinearGradient(
+            begin: Alignment(-3 + _controller.value * 6, 0),
+            end: Alignment(-1 + _controller.value * 6, 0),
+            colors: [
+              Colors.transparent,
+              Theme.of(context).colorScheme.surface.withValues(alpha: 0.65),
+              Colors.transparent,
+            ],
+          ).createShader(bounds),
+          child: ListView.builder(
+            itemCount: 5,
+            padding: const EdgeInsets.all(16),
+            itemBuilder: (context, index) => Container(
+              height: 84,
+              margin: const EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+          ),
         ),
       ),
     ),
